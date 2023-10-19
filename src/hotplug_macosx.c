@@ -283,29 +283,22 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 			int j;
 			for (j=0; j<reader_nb; j++)
 			{
+				char stringBuffer[1000];
 				CFStringRef strValue = CFArrayGetValueAtIndex(vendorArray, j);
 
-				driverBundle->m_vendorId = strtoul(CFStringGetCStringPtr(strValue,
-					CFStringGetSystemEncoding()), NULL, 16);
+				CFStringGetCString(strValue, stringBuffer, sizeof stringBuffer,
+					kCFStringEncodingUTF8);
+				driverBundle->m_vendorId = strtoul(stringBuffer, NULL, 16);
 
 				strValue = CFArrayGetValueAtIndex(productArray, j);
-				driverBundle->m_productId = strtoul(CFStringGetCStringPtr(strValue,
-					CFStringGetSystemEncoding()), NULL, 16);
+				CFStringGetCString(strValue, stringBuffer, sizeof stringBuffer,
+					kCFStringEncodingUTF8);
+				driverBundle->m_productId = strtoul(stringBuffer, NULL, 16);
 
 				strValue = CFArrayGetValueAtIndex(friendlyNameArray, j);
-				const char *cstr = CFStringGetCStringPtr(strValue,
-					CFStringGetSystemEncoding());
-				if (NULL == cstr)
-				{
-					char utf8_str[200];
-					if (CFStringGetCString(strValue, utf8_str, sizeof utf8_str,
-						kCFStringEncodingUTF8))
-						driverBundle->m_friendlyName = strdup(utf8_str);
-					else
-						continue;
-				}
-				else
-					driverBundle->m_friendlyName = strdup(cstr);
+				CFStringGetCString(strValue, stringBuffer, sizeof stringBuffer,
+					kCFStringEncodingUTF8);
+				driverBundle->m_friendlyName = strdup(stringBuffer);
 
 				if (!driverBundle->m_libPath)
 					driverBundle->m_libPath = strdup(libPath);
@@ -326,49 +319,7 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 		}
 		else
 		{
-			CFStringRef strValue = blobValue;
-
-#ifdef DEBUG_HOTPLUG
-			Log3(PCSC_LOG_DEBUG, "Driver without alias: %s %s",
-				driverBundle->m_friendlyName, driverBundle->m_libPath);
-#endif
-
-			driverBundle->m_vendorId = strtoul(CFStringGetCStringPtr(strValue,
-					CFStringGetSystemEncoding()), NULL, 16);
-
-			strValue = (CFStringRef) CFDictionaryGetValue(dict,
-				CFSTR(PCSCLITE_HP_PRODKEY_NAME));
-			if (!strValue)
-			{
-				Log1(PCSC_LOG_ERROR, "error getting product ID from bundle");
-				return bundleVector;
-			}
-			driverBundle->m_productId = strtoul(CFStringGetCStringPtr(strValue,
-				CFStringGetSystemEncoding()), NULL, 16);
-
-			strValue = (CFStringRef) CFDictionaryGetValue(dict,
-				CFSTR(PCSCLITE_HP_NAMEKEY_NAME));
-			if (!strValue)
-			{
-				Log1(PCSC_LOG_ERROR, "error getting product friendly name from bundle");
-				driverBundle->m_friendlyName = strdup("unnamed device");
-			}
-			else
-			{
-				const char *cstr = CFStringGetCStringPtr(strValue,
-					CFStringGetSystemEncoding());
-
-				driverBundle->m_friendlyName = strdup(cstr);
-			}
-#ifdef DEBUG_HOTPLUG
-			Log2(PCSC_LOG_DEBUG, "VendorID: 0x%04X", driverBundle->m_vendorId);
-			Log2(PCSC_LOG_DEBUG, "ProductID: 0x%04X", driverBundle->m_productId);
-			Log2(PCSC_LOG_DEBUG, "Friendly name: %s", driverBundle->m_friendlyName);
-			Log2(PCSC_LOG_DEBUG, "Driver: %s", driverBundle->m_libPath);
-#endif
-
-			/* go to next bundle in the vector */
-			driverBundle++;
+			Log1(PCSC_LOG_ERROR, "Non array not supported");
 		}
 	}
 	CFRelease(bundleArray);
@@ -751,9 +702,9 @@ static void HPDeviceNotificationThread(void)
  * matching devices.
  * Adds or removes matching readers as necessary.
  */
-LONG HPSearchHotPluggables(void)
+LONG HPSearchHotPluggables(const char * hpDirPath)
 {
-	Drivers = HPDriversGetFromDirectory(PCSCLITE_HP_DROPDIR);
+	Drivers = HPDriversGetFromDirectory(hpDirPath);
 
 	if (!Drivers)
 		return 1;
@@ -775,50 +726,50 @@ static int HPScan(void)
 
 	for (a = devices; a; a = a->m_next)
 	{
-		int found = FALSE;
+		bool found = false;
 		HPDevice *b;
 
 		for (b = sDeviceList; b; b = b->m_next)
 		{
 			if (HPDeviceEquals(a, b))
 			{
-				found = TRUE;
+				found = true;
 				break;
 			}
 		}
 		if (!found)
 		{
-			char deviceName[MAX_DEVICENAME];
+			char *deviceName;
 
 			/* the format should be "usb:%04x/%04x" but Apple uses the
 			 * friendly name instead */
-			snprintf(deviceName, sizeof(deviceName),
-				"%s", a->m_driver->m_friendlyName);
-			deviceName[sizeof(deviceName)-1] = '\0';
+			asprintf(&deviceName, "%s", a->m_driver->m_friendlyName);
 
 			RFAddReader(a->m_driver->m_friendlyName,
 				PCSCLITE_HP_BASE_PORT + a->m_address, a->m_driver->m_libPath,
 				deviceName);
+			free(deviceName);
 		}
 	}
 
 	for (a = sDeviceList; a; a = a->m_next)
 	{
-		int found = FALSE;
+		bool found = false;
 		HPDevice *b;
 
 		for (b = devices; b; b = b->m_next)
 		{
 			if (HPDeviceEquals(a, b))
 			{
-				found = TRUE;
+				found = true;
 				break;
 			}
 		}
 		if (!found)
 		{
 			RFRemoveReader(a->m_driver->m_friendlyName,
-				PCSCLITE_HP_BASE_PORT + a->m_address);
+				PCSCLITE_HP_BASE_PORT + a->m_address,
+				REMOVE_READER_FLAG_REMOVED);
 		}
 	}
 
@@ -834,7 +785,7 @@ pthread_t sHotplugWatcherThread;
 /*
  * Sets up callbacks for device hotplug events.
  */
-ULONG HPRegisterForHotplugEvents(void)
+ULONG HPRegisterForHotplugEvents(const char * hpDirPath)
 {
 	ThreadCreate(&sHotplugWatcherThread,
 		THREAD_ATTR_DEFAULT,

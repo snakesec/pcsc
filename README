@@ -26,7 +26,7 @@ allocate/deallocate reader drivers at runtime (default).
 PCSC Lite uses the same winscard API as used under Windows(R).
 
 For security aware persons please read the SECURITY file on possible
-vulnerabilites to pcsclite, how you can fix some, and how some will
+vulnerabilities to pcsclite, how you can fix some, and how some will
 be fixed.
 
 For information on how to install driver please read the DRIVERS file.
@@ -57,33 +57,30 @@ Options:
                                  (default /var/run)
 
 
-By running pcscd under a priveledged account you can link to
+By running pcscd under a privileged account you can link to
 libpcsclite.so and it will act as a client to the pcscd allowing multiple
 applications to be run under non-priveledged accounts.
 
-Then type make install to copy etc/reader.conf to
-/etc/reader.conf and the libraries to /usr/local/lib. If you choose
-not to have your reader.conf in /etc then use --enable-confdir=DIR
+Then type "make install" to copy the libraries to /usr/local/lib. If you
+choose not to have your reader configuration file in /etc/reader.conf.d/
+then use --enable-confdir=DIR
 
 You must be root to do make install in the default locations.
 
-Be sure to edit the /etc/reader.conf file to fit your needs and make sure
-your IFD Handler driver is located in the path specified as LIBRARYPATH
-in reader.conf.  If you are using a reader with multiple smart card slots
-all you have to do is define a different FRIENDLYNAME in the reader.conf
-for each reader.  Both will have the same information otherwise.
+Be sure to edit the /etc/reader.conf.d/my_reader.conf file for your
+reader to fit your needs and make sure your IFD Handler driver is
+located in the path specified as LIBRARYPATH in my_reader.conf.  If you
+are using a reader with multiple smart card slots all you have to do is
+define a different FRIENDLYNAME in the my_reader.conf for each reader.
+Both will have the same information otherwise.
 
-There is an config file generator in the utils directory.  It is called
-installifd.  You may use this to generate the /etc/reader.conf file.
-
-USB users shall not use /etc/reader.conf.  pcscd will give
-a warning that the file does not exist or contain anything useful.
+USB users shall not use /etc/reader.conf.d/ to configure USB drivers.
 
 There is a test program with this package:
 
 testpcsc: Linked to libpcsclite.  Must run /usr/local/pcsc/bin/pcscd
           and then ./testpcsc.  pcscd must be run as root or a hardware
-          priveledged user.  ./testpcsc can be run under any account.
+          privileged user.  ./testpcsc can be run under any account.
 
 LIBUSB SUPPORT:
 Versions after 1.2.0 support libusb. Available on GNU/Linux and *BSD.
@@ -97,7 +94,7 @@ called "XXXX.bundle" in the usb dropdir directory (--enable-usbdropdir=PATH).
 Here, the string "XXXX" stands for an arbitrary driver name, like in
 "ifd-GemPC430.bundle". An example .bundle-directory can be found in the
 source distribution of the ifd-gempc driver
-(http://ludovic.rousseau.free.fr/softwares/ifd-GemPC/)
+(https://ifd-gempc.apdu.fr/)
 
 SOLARIS:
 Solaris PC/SC applications must link with -lsocket since
@@ -110,5 +107,5 @@ directory.  For questions, please email me at:
 <David Corcoran> corcoran@musclecard.com
 
 On some plateforms (GNU/Linux on mips and mipsel, FreeBSD and possibly
-other *BSD suystems) you must use:
+other *BSD systems) you must use:
 $ ./configure LDFLAGS="-lpthread"

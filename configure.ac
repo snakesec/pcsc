@@ -3,7 +3,7 @@
 
 AC_PREREQ([2.69])
 
-AC_INIT([pcsc-lite],[1.9.4])
+AC_INIT([pcsc-lite],[2.0.0])
 AC_CONFIG_SRCDIR(src/pcscdaemon.c)
 AM_INIT_AUTOMAKE(1.8 dist-bzip2 no-dist-gzip)
 AC_CONFIG_HEADERS([config.h])
@@ -61,6 +61,10 @@ AC_PROG_INSTALL
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_LEX([noyywrap])
+if test $LEX = ":"
+then
+	AC_MSG_ERROR([no lex or flex found])
+fi
 PKG_PROG_PKG_CONFIG
 AM_PROG_CC_C_O
 AM_PROG_AR
@@ -105,7 +109,8 @@ AC_STRUCT_DIRENT_D_TYPE
 AC_FUNC_ERROR_AT_LINE
 AC_FUNC_STAT
 AC_FUNC_VPRINTF
-AC_CHECK_FUNCS(getopt_long nanosleep strerror vsnprintf)
+AC_CHECK_FUNCS(getopt_long nanosleep strerror vsnprintf getrandom)
+AC_CHECK_FUNCS(secure_getenv issetugid)
 AC_FUNC_ALLOCA
 
 # C Compiler features
@@ -167,7 +172,7 @@ fi
 
 # --disable-serial
 AC_ARG_ENABLE(serial,
-	AS_HELP_STRING([--disable-serial],[do not use serial reader.conf file]),
+	AS_HELP_STRING([--disable-serial],[do not use serial reader.conf files]),
 	[ use_serial="${enableval}" ], [ use_serial="yes" ] )
 AM_CONDITIONAL(ENABLE_SERIAL, test "$use_serial" != "no")
 if test "$use_serial" != "no"; then
@@ -306,6 +311,7 @@ if test "$use_polkit" != "no"; then
 		AC_DEFINE([HAVE_POLKIT], 1, [Build polkit access control support])
 		polkit_policy_dir=$($PKG_CONFIG polkit-gobject-1 --variable=policydir)
 		AC_SUBST(POLICY_DIR, [$polkit_policy_dir])
+		PCSCLITE_FEATURES="${PCSCLITE_FEATURES} polkit"
 	else
 	        use_polkit=no
 	        AC_MSG_ERROR([[
@@ -328,7 +334,7 @@ AM_CONDITIONAL(HAVE_SYSTEMD, [test -n "$with_systemdsystemunitdir" -a "x$with_sy
 
 # --enable-embedded
 AC_ARG_ENABLE(embedded,
-  AS_HELP_STRING([--enable-embedded],[limit RAM and CPU ressources by disabling features (log)]),
+  AS_HELP_STRING([--enable-embedded],[limit RAM and CPU resources by disabling features (log)]),
   [ use_embedded="${enableval}" ])
 
 if test x$use_embedded = xyes; then
@@ -383,7 +389,7 @@ CPPFLAGS="-I\${top_srcdir}/src $CPPFLAGS"
 
 # --enable-confdir=DIR
 AC_ARG_ENABLE(confdir,
-AS_HELP_STRING([--enable-confdir=DIR],[directory containing reader configurations (default /etc/reader.conf.d)]),
+AS_HELP_STRING([--enable-confdir=DIR],[directory containing reader configurations (default ${sysconfdir}/reader.conf.d)]),
 	[confdir="${enableval}"],
 	[confdir="${sysconfdir}/reader.conf.d"])
 
@@ -396,6 +402,17 @@ AC_ARG_ENABLE(filter,
 if test x$use_filter = xyes; then
   AC_DEFINE(FILTER_NAMES, 1, [Filter reader names])
   PCSCLITE_FEATURES="${PCSCLITE_FEATURES} filter"
+fi
+
+# --enable-strict
+AC_ARG_ENABLE(
+	[strict],
+	[AS_HELP_STRING([--enable-strict],[enable strict compile mode @<:@enabled@:>@])],
+	,
+	[enable_strict="no"]
+)
+if test "${enable_strict}" = "yes"; then
+	CFLAGS="-Wall -Wextra -Werror ${CFLAGS}"
 fi
 
 # Setup dist stuff
@@ -461,8 +478,6 @@ doc/pcscd.8
 doc/reader.conf.5
 doc/example/Makefile
 etc/Makefile
-etc/pcscd.service
-etc/pcscd.socket
 src/Makefile
 src/libpcsclite.pc
 src/pcscd.h

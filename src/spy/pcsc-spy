@@ -74,7 +74,7 @@ class StatRecord(object):
         self.name = name
         self.executions = list()
         self.total_time = 0
-        self.occurences = 0
+        self.occurrences = 0
 
     def __repr__(self):
         return self.name + ": " + repr(self.executions)
@@ -219,6 +219,20 @@ class PCSCspy(object):
         else:
             self.log_in("hCard: %s" % hCard)
 
+    def log_in_scard_io_request(self):
+        """ log SCARD_IO_REQUEST IN parameter """
+        dwProtocol = self.get_line()
+        if self.diffable:
+            self.log_in("pioSendPci.dwProtocol: 0x????")
+        else:
+            self.log_in("pioSendPci.dwProtocol: %s" % dwProtocol)
+
+        cbPciLength = self.get_line()
+        if self.diffable:
+            self.log_in("pioSendPci.cbPciLength: 0x????")
+        else:
+            self.log_in("pioSendPci.cbPciLength: %s" % cbPciLength)
+
     def log_in_hContext(self):
         """ log hContext IN parameter """
         hContext = self.get_line()
@@ -288,6 +302,20 @@ class PCSCspy(object):
             PreferredProtocols.append("T=15")
         self.log_in("dwPreferredProtocols: %s (%s)" % (dwPreferredProtocols,
             ", ".join(PreferredProtocols)))
+
+    def log_out_scard_io_request(self):
+        """ log SCARD_IO_REQUEST OUT parameter """
+        dwProtocol = self.get_line()
+        if self.diffable:
+            self.log_out("pioRecvPci.dwProtocol: 0x????")
+        else:
+            self.log_out("pioRecvPci.dwProtocol: %s" % dwProtocol)
+
+        cbPciLength = self.get_line()
+        if self.diffable:
+            self.log_out("pioRecvPci.cbPciLength: 0x????")
+        else:
+            self.log_out("pioRecvPci.cbPciLength: %s" % cbPciLength)
 
     def log_out_dwActiveProtocol(self):
         """ log dwActiveProtocol OUT parameter """
@@ -510,8 +538,10 @@ class PCSCspy(object):
         """ SCardTransmit """
         self.log_name("SCardTransmit")
         self.log_in_hCard()
+        self.log_in_scard_io_request()
         self.log_in2("bSendLength")
         self.log_buffer("bSendBuffer", "in")
+        self.log_out_scard_io_request()
         self.log_out2("bRecvLength")
         self.log_buffer("bRecvBuffer", "out")
         self._log_rv()
@@ -532,7 +562,7 @@ class PCSCspy(object):
         if rv_text != "SCARD_S_SUCCESS":
             return
 
-        def hex2int(data, lengh):
+        def hex2int(data, length):
             return [int(x, 16) for x in data.split(" ")]
 
         if dwControlCode == self.CM_IOCTL_GET_FEATURE_REQUEST:
@@ -913,7 +943,7 @@ class PCSCdemultiplexer(object):
             stat = stats[thread]
             for fct in stat:
                 record = stat[fct]
-                record.occurences = len(record.executions)
+                record.occurrences = len(record.executions)
                 record.total_time = sum(record.executions)
 
             records = [stat[fct] for fct in stat]
@@ -926,7 +956,7 @@ class PCSCdemultiplexer(object):
             for record in sorted(records, key=attrgetter('total_time'),
                                  reverse=True):
                 print("%f sec (%3d calls) %5.2f%% %s" % (record.total_time,
-                    record.occurences, record.total_time / total_time * 100.,
+                    record.occurrences, record.total_time / total_time * 100.,
                     record.name))
 
             thread_n += 1

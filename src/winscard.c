@@ -71,7 +71,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * @section Internals
  *
- * PC/SC Lite is formed by a server deamon (<tt>pcscd</tt>) and a client
+ * PC/SC Lite is formed by a server daemon (<tt>pcscd</tt>) and a client
  * library (<tt>libpcsclite.so</tt>) that communicate via IPC.
  *
  * The file \em winscard_clnt.c in the client-side exposes the API for
@@ -122,11 +122,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #undef DO_PROFILE
 #ifdef DO_PROFILE
 
-#ifndef FALSE
-#define FALSE 0
-#define TRUE 1
-#endif
-
 #define PROFILE_FILE "/tmp/pcscd_profile"
 #include <stdio.h>
 #include <sys/time.h>
@@ -135,18 +130,18 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct timeval profile_time_start;
 FILE *fd;
-char profile_tty;
+bool profile_tty;
 
 #define PROFILE_START profile_start(__FUNCTION__);
 #define PROFILE_END profile_end(__FUNCTION__, __LINE__);
 
 static void profile_start(const char *f)
 {
-	static char initialized = FALSE;
+	static bool initialized = false;
 
 	if (!initialized)
 	{
-		initialized = TRUE;
+		initialized = true;
 		fd = fopen(PROFILE_FILE, "a+");
 		if (NULL == fd)
 		{
@@ -158,9 +153,9 @@ static void profile_start(const char *f)
 		fflush(fd);
 
 		if (isatty(fileno(stderr)))
-			profile_tty = TRUE;
+			profile_tty = true;
 		else
-			profile_tty = FALSE;
+			profile_tty = false;
 	}
 
 	gettimeofday(&profile_time_start, NULL);
@@ -210,7 +205,7 @@ LONG SCardEstablishContext(DWORD dwScope, /*@unused@*/ LPCVOID pvReserved1,
 	 * identified by clients and distinguished from others
 	 */
 
-	*phContext = SYS_RandomInt(0, -1);
+	*phContext = SYS_RandomInt();
 
 	Log2(PCSC_LOG_DEBUG, "Establishing Context: 0x%lX", *phContext);
 
@@ -335,8 +330,8 @@ LONG SCardConnect(/*@unused@*/ SCARDCONTEXT hContext, LPCSTR szReader,
 					rContext->readerState->cardAtrLength);
 			}
 			else
-				Log3(PCSC_LOG_ERROR, "Error powering up card: %ld 0x%04lX",
-					rv, rv);
+				Log2(PCSC_LOG_ERROR, "Error powering up card: %s",
+					rv2text(rv));
 		}
 
 		if (! (rContext->readerState->readerState & SCARD_POWERED))
@@ -447,7 +442,7 @@ LONG SCardConnect(/*@unused@*/ SCARDCONTEXT hContext, LPCSTR szReader,
 	 * Prepare the SCARDHANDLE identity
 	 */
 
-	/* we need a lock to avoid concurent generation of handles leading
+	/* we need a lock to avoid concurrent generation of handles leading
 	 * to a possible hCard handle duplication */
 	(void)pthread_mutex_lock(&LockMutex);
 
@@ -715,10 +710,8 @@ LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
 			}
 
 			/* the card is now in use */
-			(void)pthread_mutex_lock(&rContext->powerState_lock);
-			rContext->powerState = POWER_STATE_IN_USE;
+			RFSetPowerState(rContext, POWER_STATE_IN_USE);
 			Log1(PCSC_LOG_DEBUG, "powerState: POWER_STATE_IN_USE");
-			(void)pthread_mutex_unlock(&rContext->powerState_lock);
 		}
 	}
 
@@ -842,6 +835,9 @@ LONG SCardDisconnect(SCARDHANDLE hCard, DWORD dwDisposition)
 
 	/* get rContext corresponding to hCard */
 	rv = RFReaderInfoById(hCard, &rContext);
+	/* ignore reader removal */
+	if (SCARD_E_INVALID_VALUE == rv || SCARD_E_READER_UNAVAILABLE == rv)
+		return SCARD_S_SUCCESS;
 	if (rv != SCARD_S_SUCCESS)
 		return rv;
 
@@ -900,7 +896,7 @@ LONG SCardDisconnect(SCARDHANDLE hCard, DWORD dwDisposition)
 			/* SCARD_UNPOWER_CARD */
 			rv = IFDPowerICC(rContext, IFD_POWER_DOWN, NULL, NULL);
 
-			rContext->powerState = POWER_STATE_UNPOWERED;
+			RFSetPowerState(rContext, POWER_STATE_UNPOWERED);
 			Log1(PCSC_LOG_DEBUG, "powerState: POWER_STATE_UNPOWERED");
 		}
 
@@ -926,8 +922,8 @@ LONG SCardDisconnect(SCARDHANDLE hCard, DWORD dwDisposition)
 		else
 		{
 			if (SCARD_UNPOWER_CARD == dwDisposition)
-				Log3(PCSC_LOG_ERROR, "Error powering down card: %ld 0x%04lX",
-					rv, rv);
+				Log2(PCSC_LOG_ERROR, "Error powering down card: %s",
+					rv2text(rv));
 			else
 			{
 				rContext->readerState->cardAtrLength = 0;
@@ -1079,7 +1075,7 @@ LONG SCardBeginTransaction(SCARDHANDLE hCard)
 	if (SCARD_E_SHARING_VIOLATION == rv)
 		(void)SYS_USleep(PCSCLITE_LOCK_POLL_RATE);
 
-	Log2(PCSC_LOG_DEBUG, "Status: 0x%08lX", rv);
+	Log2(PCSC_LOG_DEBUG, "Status: %s", rv2text(rv));
 
 exit:
 	UNREF_READER(rContext)
@@ -1231,7 +1227,7 @@ LONG SCardEndTransaction(SCARDHANDLE hCard, DWORD dwDisposition)
 		if (rv == SCARD_S_SUCCESS)
 			rv = rv2;
 
-	Log2(PCSC_LOG_DEBUG, "Status: 0x%08lX", rv);
+	Log2(PCSC_LOG_DEBUG, "Status: %s", rv2text(rv));
 
 exit:
 	UNREF_READER(rContext)
@@ -1617,7 +1613,7 @@ LONG SCardTransmit(SCARDHANDLE hCard, const SCARD_IO_REQUEST *pioSendPci,
 	if (rv != SCARD_S_SUCCESS)
 	{
 		*pcbRecvLength = 0;
-		Log2(PCSC_LOG_ERROR, "Card not transacted: 0x%08lX", rv);
+		Log2(PCSC_LOG_ERROR, "Card not transacted: %s", rv2text(rv));
 
         if (SCARD_E_NO_SMARTCARD == rv)
         {
