@@ -1,3 +1,5 @@
+autoreconf -i .
+
 ./configure --disable-libsystemd --disable-libudev
 
 if [ $? -eq 0 ]
