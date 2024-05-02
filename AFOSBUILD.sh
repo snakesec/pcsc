@@ -1,6 +1,6 @@
 autoreconf -i .
 
-./configure --disable-libsystemd --disable-libudev
+./configure --disable-libsystemd --disable-libudev --disable-polkit
 
 if [ $? -eq 0 ]
 then
