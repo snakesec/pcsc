@@ -3,7 +3,7 @@
  *
  * Copyright (C) 1999-2002
  *  David Corcoran <corcoran@musclecard.com>
- * Copyright (C) 2002-2011
+ * Copyright (C) 2002-2024
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
 Redistribution and use in source and binary forms, with or without
@@ -36,9 +36,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "config.h"
-#ifdef HAVE_SYSLOG_H
 #include <syslog.h>
-#endif
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -109,6 +107,8 @@ static char LogCategory = DEBUG_CATEGORY_NOTHING;
 static char LogLevel = PCSC_LOG_ERROR;
 
 static signed char LogDoColor = 0;	/**< no color by default */
+
+static pthread_mutex_t LastTimeMutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void log_line(const int priority, const char *DebugBuffer,
 	unsigned int rv);
@@ -213,6 +213,7 @@ static void log_line(const int priority, const char *DebugBuffer,
 		pthread_t thread_id;
 		const char *rv_text = NULL;
 
+		(void)pthread_mutex_lock(&LastTimeMutex);
 		gettimeofday(&new_time, NULL);
 		if (0 == last_time.tv_sec)
 			last_time = new_time;
@@ -230,6 +231,7 @@ static void log_line(const int priority, const char *DebugBuffer,
 			delta = 99999999;
 
 		last_time = new_time;
+		(void)pthread_mutex_unlock(&LastTimeMutex);
 
 		thread_id = pthread_self();
 
@@ -350,9 +352,9 @@ void DebugLogSetLogType(const int dbgtype)
 	if ((DEBUGLOG_STDOUT_DEBUG == LogMsgType && isatty(fileno(stdout)))
 		|| (DEBUGLOG_STDOUT_COLOR_DEBUG == LogMsgType))
 	{
-		char *term;
+		const char *term;
 
-		term = getenv("TERM");
+		term = SYS_GetEnv("TERM");
 		if (term)
 		{
 			const char *terms[] = { "linux", "xterm", "xterm-color", "Eterm", "rxvt", "rxvt-unicode", "xterm-256color" };

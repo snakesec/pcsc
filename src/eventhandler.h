@@ -3,7 +3,7 @@
  *
  * Copyright (C) 1999-2002
  *  David Corcoran <corcoran@musclecard.com>
- * Copyright (C) 2002-2010
+ * Copyright (C) 2002-2023
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
 Redistribution and use in source and binary forms, with or without
@@ -54,10 +54,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 		char readerName[MAX_READERNAME]; /**< reader name */
 		uint32_t eventCounter; /**< number of card events */
 		uint32_t readerState; /**< SCARD_* bit field */
-		int32_t readerSharing; /**< PCSCLITE_SHARING_* sharing status */
+		_Atomic int32_t readerSharing; /**< PCSCLITE_SHARING_* sharing status */
 
 		UCHAR cardAtr[MAX_ATR_SIZE]; /**< ATR */
-		uint32_t cardAtrLength; /**< ATR length */
+		_Atomic uint32_t cardAtrLength; /**< ATR length */
 		uint32_t cardProtocol; /**< SCARD_PROTOCOL_* value */
 	}
 	READER_STATE;

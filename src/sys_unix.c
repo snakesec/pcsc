@@ -5,7 +5,7 @@
  *
  * Copyright (C) 1999
  *  David Corcoran <corcoran@musclecard.com>
- * Copyright (C) 2002-2022
+ * Copyright (C) 2002-2024
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
 Redistribution and use in source and binary forms, with or without
@@ -116,7 +116,9 @@ INTERNAL int SYS_RandomInt(void)
 	ret = getrandom(c, sizeof c, 0);
 	if (-1 == ret)
 	{
+#ifdef PCSCD
 		Log2(PCSC_LOG_ERROR, "getrandom() failed: %s", strerror(errno));
+#endif
 		return lrand48();
 	}
 	// this loop avoids trap representations that may occur in the naive solution

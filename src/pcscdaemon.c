@@ -3,7 +3,7 @@
  *
  * Copyright (C) 1999-2002
  *  David Corcoran <corcoran@musclecard.com>
- * Copyright (C) 2002-2022
+ * Copyright (C) 2002-2024
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
 Redistribution and use in source and binary forms, with or without
@@ -51,9 +51,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#ifdef HAVE_GETOPT_H
 #include <getopt.h>
-#endif
 #ifdef USE_LIBSYSTEMD
 #include <systemd/sd-daemon.h>
 #endif
@@ -116,10 +114,12 @@ static void SVCServiceRunLoop(void)
 #endif
 			(void)SYS_Sleep(1);
 
+			/* stop all the clients */
+			ContextsDeinitialize();
+
 			/* now stop all the drivers */
 			RFCleanupReaders();
 			EHDeinitializeEventStructures();
-			ContextsDeinitialize();
 			at_exit();
 		}
 
@@ -855,13 +855,13 @@ static void signal_trap(int sig)
 
 static void print_version(void)
 {
-	printf("%s version %s.\n",  PACKAGE, VERSION);
+	printf("pcsc-lite version " VERSION "\n");
 	printf("Copyright (C) 1999-2002 by David Corcoran <corcoran@musclecard.com>.\n");
-	printf("Copyright (C) 2001-2022 by Ludovic Rousseau <ludovic.rousseau@free.fr>.\n");
+	printf("Copyright (C) 2001-2024 by Ludovic Rousseau <ludovic.rousseau@free.fr>.\n");
 	printf("Copyright (C) 2003-2004 by Damien Sauveron <sauveron@labri.fr>.\n");
 	printf("Report bugs to <pcsclite-muscle@lists.infradead.org>.\n");
 
-	printf("Enabled features:%s\n", PCSCLITE_FEATURES);
+	printf("Enabled features: " PCSCLITE_FEATURES "\n");
 	printf("MAX_READERNAME: %d, PCSCLITE_MAX_READERS_CONTEXTS: %d\n",
 		MAX_READERNAME, PCSCLITE_MAX_READERS_CONTEXTS);
 }

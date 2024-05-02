@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2001-2004
  *  David Corcoran <corcoran@musclecard.com>
- * Copyright (C) 2003-2011
+ * Copyright (C) 2003-2024
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  * Copyright (C) 2003
  *  Toni Andjelkovic <toni@soth.at>
@@ -342,7 +342,7 @@ static void HPRescanUsbBus(void)
 	ssize_t cnt;
 
 	for (i=0; i < PCSCLITE_MAX_READERS_CONTEXTS; i++)
-		/* clear rollcall */
+		/* clear roll call */
 		readerTracker[i].status = READER_ABSENT;
 
 	cnt = libusb_get_device_list(ctx, &devs);
@@ -447,30 +447,6 @@ static void HPRescanUsbBus(void)
 
 	/* free the libusb allocated list & devices */
 	libusb_free_device_list(devs, 1);
-
-	if (AraKiriHotPlug)
-	{
-		int retval;
-
-		for (i=0; i<PCSCLITE_MAX_READERS_CONTEXTS; i++)
-		{
-			if (readerTracker[i].fullName != NULL)
-				HPCleanupHotPluggable(i);
-		}
-
-		for (i=0; i<driverSize; i++)
-		{
-			/* free strings allocated by strdup() */
-			free(driverTracker[i].bundleName);
-			free(driverTracker[i].libraryPath);
-			free(driverTracker[i].readerName);
-			free(driverTracker[i].CFBundleName);
-		}
-		free(driverTracker);
-
-		Log1(PCSC_LOG_INFO, "Hotplug stopped");
-		pthread_exit(&retval);
-	}
 }
 
 static void * HPEstablishUSBNotifications(int pipefd[2])
@@ -526,19 +502,14 @@ static void * HPEstablishUSBNotifications(int pipefd[2])
 			SYS_Sleep(HPForceReaderPolling);
 			HPRescanUsbBus();
 		}
-		libusb_exit(ctx);
 	}
 	else
 	{
 		char dummy;
-
-		if (pipe(rescan_pipe) == -1)
-		{
-			Log2(PCSC_LOG_ERROR, "pipe: %s", strerror(errno));
-			return NULL;
-		}
 		while (read(rescan_pipe[0], &dummy, sizeof(dummy)) > 0)
 		{
+			if (AraKiriHotPlug)
+				break;
 			Log1(PCSC_LOG_INFO, "Reload serial configuration");
 			HPRescanUsbBus();
 #ifdef USE_SERIAL
@@ -546,9 +517,30 @@ static void * HPEstablishUSBNotifications(int pipefd[2])
 #endif
 			Log1(PCSC_LOG_INFO, "End reload serial configuration");
 		}
-		close(rescan_pipe[0]);
-		rescan_pipe[0] = -1;
 	}
+
+	libusb_exit(ctx);
+
+	for (int i=0; i<PCSCLITE_MAX_READERS_CONTEXTS; i++)
+	{
+		if (readerTracker[i].fullName != NULL)
+			HPCleanupHotPluggable(i);
+	}
+
+	for (int i=0; i<driverSize; i++)
+	{
+		/* free strings allocated by strdup() */
+		free(driverTracker[i].bundleName);
+		free(driverTracker[i].libraryPath);
+		free(driverTracker[i].readerName);
+		free(driverTracker[i].CFBundleName);
+	}
+	free(driverTracker);
+
+	close(rescan_pipe[0]);
+	rescan_pipe[0] = -1;
+
+	Log1(PCSC_LOG_INFO, "Hotplug stopped");
 
 	return NULL;
 }
@@ -567,6 +559,7 @@ LONG HPSearchHotPluggables(const char * hpDirPath)
 
 	if (HPReadBundleValues(hpDirPath) > 0)
 	{
+		/* used for waiting for the initialization completion */
 		int pipefd[2];
 		char c;
 
@@ -576,7 +569,14 @@ LONG HPSearchHotPluggables(const char * hpDirPath)
 			return -1;
 		}
 
-		ThreadCreate(&usbNotifyThread, THREAD_ATTR_DETACHED,
+		/* used for rescan events */
+		if (pipe(rescan_pipe) == -1)
+		{
+			Log2(PCSC_LOG_ERROR, "pipe: %s", strerror(errno));
+			return -1;
+		}
+
+		ThreadCreate(&usbNotifyThread, 0,
 			(PCSCLITE_THREAD_FUNCTION( )) HPEstablishUSBNotifications, pipefd);
 
 		/* Wait for initial readers to setup */
@@ -584,7 +584,7 @@ LONG HPSearchHotPluggables(const char * hpDirPath)
 		{
 			Log2(PCSC_LOG_ERROR, "read: %s", strerror(errno));
 			return -1;
-		};
+		}
 
 		/* cleanup pipe fd */
 		close(pipefd[0]);
@@ -596,12 +596,18 @@ LONG HPSearchHotPluggables(const char * hpDirPath)
 
 LONG HPStopHotPluggables(void)
 {
+	/* tell the rescan thread to shut down; it checks the ara kiri flag, but it
+	 * might also need to be awaken from reading the rescan pipe */
 	AraKiriHotPlug = true;
+	HPReCheckSerialReaders();
+
 	if (rescan_pipe[1] >= 0)
 	{
 		close(rescan_pipe[1]);
 		rescan_pipe[1] = -1;
 	}
+	/* wait for the rescan thread to complete its cleanup */
+	pthread_join(usbNotifyThread, NULL);
 
 	return 0;
 }
