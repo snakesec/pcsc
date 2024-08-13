@@ -115,8 +115,8 @@ static void log_line(const char *fmt, ...)
 	va_list args;
 
 	va_start(args, fmt);
-	vprintf(fmt, args);
-	printf("\n");
+	vfprintf(stderr, fmt, args);
+	fprintf(stderr, "\n");
 	va_end(args);
 }
 #else
@@ -195,7 +195,6 @@ PCSC_API LONG SCardEstablishContext(DWORD dwScope,
 
 	return redirect.SCardEstablishContext(dwScope, pvReserved1, pvReserved2,
 		phContext);
-	return rv;
 }
 
 PCSC_API LONG SCardReleaseContext(SCARDCONTEXT hContext)

@@ -251,14 +251,10 @@ static void profile_end(const char *f, LONG rv)
 
 	if (profile_tty)
 	{
-		if (rv != SCARD_S_SUCCESS)
-			fprintf(stderr,
-				COLOR_RED "RESULT %s " COLOR_MAGENTA "%ld "
-				COLOR_BLUE "0x%08lX %s" COLOR_NORMAL "\n",
-				f, d, rv, pcsc_stringify_error(rv));
-		else
-			fprintf(stderr, COLOR_RED "RESULT %s " COLOR_MAGENTA "%ld"
-				COLOR_NORMAL "\n", f, d);
+		fprintf(stderr,
+			COLOR_RED "RESULT %s " COLOR_MAGENTA "%ld "
+			COLOR_BLUE "0x%08lX" COLOR_NORMAL "\n",
+			f, d, rv);
 	}
 	fprintf(profile_fd, "%s %ld\n", f, d);
 	fflush(profile_fd);
@@ -375,6 +371,7 @@ static void SCardRemoveHandle(SCARDHANDLE);
 static LONG SCardGetSetAttrib(SCARDHANDLE hCard, int command, DWORD dwAttrId,
 	LPBYTE pbAttr, LPDWORD pcbAttrLen);
 
+static LONG getReaderEvents(SCONTEXTMAP * currentContextMap, int *readerEvents);
 static LONG getReaderStates(SCONTEXTMAP * currentContextMap);
 static LONG getReaderStatesAndRegisterForEvents(SCONTEXTMAP * currentContextMap);
 static LONG unregisterFromEvents(SCONTEXTMAP * currentContextMap);
@@ -1589,9 +1586,13 @@ end:
  * be used to detect a card removal/insertion between two calls to
  * SCardGetStatusChange()
  *
- * To wait for a reader event (reader added or removed) you may use the special
- * reader name \c "\\?PnP?\Notification". If a reader event occurs the state of
- * this reader will change and the bit \ref SCARD_STATE_CHANGED will be set.
+ * To wait for a reader event (reader added or removed) you may use the
+ * special reader name \c "\\?PnP?\Notification". If a reader event
+ * occurs the state of this reader will change and the bit \ref
+ * SCARD_STATE_CHANGED will be set.
+ * To detect a reader event betweeen 2 calls to SCardGetStatusChange()
+ * you can use the upper 16 bits of \p dwCurrentState. See https://blog.apdu.fr/posts/2024/08/improved-scardgetstatuschange-for-pnpnotification-special-reader/
+
  *
  * To cancel the ongoing call, use SCardCancel() with the same
  * \ref SCARDCONTEXT.
@@ -1689,14 +1690,16 @@ LONG SCardGetStatusChange(SCARDCONTEXT hContext, DWORD dwTimeout,
 	SCONTEXTMAP * currentContextMap;
 	int currentReaderCount = 0;
 	LONG rv = SCARD_S_SUCCESS;
+	int pnp_reader = -1;
 
 	PROFILE_START
 	API_TRACE_IN("%ld %ld %d", hContext, dwTimeout, cReaders)
 #ifdef DO_TRACE
 	for (j=0; j<cReaders; j++)
 	{
-		API_TRACE_IN("[%d] %s %lX %lX", j, rgReaderStates[j].szReader,
-			rgReaderStates[j].dwCurrentState, rgReaderStates[j].dwEventState)
+		API_TRACE_IN("[%d] %s %lX %lX (%d)", j, rgReaderStates[j].szReader,
+			rgReaderStates[j].dwCurrentState, rgReaderStates[j].dwEventState,
+			rgReaderStates[j].cbAtr)
 	}
 #endif
 
@@ -1781,6 +1784,8 @@ LONG SCardGetStatusChange(SCARDCONTEXT hContext, DWORD dwTimeout,
 				(void)pthread_mutex_unlock(&readerStatesMutex);
 				goto end;
 			}
+			else
+				pnp_reader = j;
 		}
 	}
 	(void)pthread_mutex_unlock(&readerStatesMutex);
@@ -1791,6 +1796,33 @@ LONG SCardGetStatusChange(SCARDCONTEXT hContext, DWORD dwTimeout,
 
 	/* Now is where we start our event checking loop */
 	Log2(PCSC_LOG_DEBUG, "Event Loop Start, dwTimeout: %ld", dwTimeout);
+
+	/* index of the PnP readerin rgReaderStates[] */
+	if (pnp_reader >= 0)
+	{
+		int readerEvents;
+		currReader = &rgReaderStates[pnp_reader];
+
+		/* PnP special reader */
+		if (SCARD_S_SUCCESS == getReaderEvents(currentContextMap, &readerEvents))
+		{
+			int previousReaderEvents = currReader->dwCurrentState >> 16;
+
+			// store readerEvents in .dwEventState high word
+			currReader->dwEventState = (currReader->dwEventState & 0xFFFF) + (readerEvents << 16);
+			if (
+				/* the value has changed since the last call */
+				(previousReaderEvents != readerEvents)
+				/* backward compatibility: only if we had a non-null
+				 * reader events value */
+				&& previousReaderEvents)
+			{
+				currReader->dwEventState |= SCARD_STATE_CHANGED;
+				rv = SCARD_S_SUCCESS;
+				dwBreakFlag = 1;
+			}
+		}
+	}
 
 	/* Get the initial reader count on the system */
 	for (j=0; j < PCSCLITE_MAX_READERS_CONTEXTS; j++)
@@ -1841,8 +1873,16 @@ LONG SCardGetStatusChange(SCARDCONTEXT hContext, DWORD dwTimeout,
 
 					if (newReaderCount != currentReaderCount)
 					{
+						int readerEvents;
+
 						Log1(PCSC_LOG_INFO, "Reader list changed");
 						currentReaderCount = newReaderCount;
+
+						if (SCARD_S_SUCCESS == getReaderEvents(currentContextMap, &readerEvents))
+						{
+							// store readerEvents in .dwEventState high word
+							currReader->dwEventState = (currReader->dwEventState & 0xFFFF) + (readerEvents << 16);
+						}
 
 						currReader->dwEventState |= SCARD_STATE_CHANGED;
 						dwBreakFlag = 1;
@@ -2168,8 +2208,9 @@ error:
 #ifdef DO_TRACE
 	for (j=0; j<cReaders; j++)
 	{
-		API_TRACE_OUT("[%d] %s %X %X", j, rgReaderStates[j].szReader,
-			rgReaderStates[j].dwCurrentState, rgReaderStates[j].dwEventState)
+		API_TRACE_OUT("[%d] %s %lX %lX (%d)", j, rgReaderStates[j].szReader,
+			rgReaderStates[j].dwCurrentState, rgReaderStates[j].dwEventState,
+			rgReaderStates[j].cbAtr)
 	}
 #endif
 
@@ -3558,6 +3599,26 @@ LONG SCardCheckDaemonAvailability(void)
 			socketName, strerror(errno));
 		return SCARD_E_NO_SERVICE;
 	}
+
+	return SCARD_S_SUCCESS;
+}
+
+static LONG getReaderEvents(SCONTEXTMAP * currentContextMap, int *readerEvents)
+{
+	int32_t dwClientID = currentContextMap->dwClientID;
+	LONG rv;
+	struct get_reader_events get_reader_events = {0};
+
+	rv = MessageSendWithHeader(CMD_GET_READER_EVENTS, dwClientID, 0, NULL);
+	if (rv != SCARD_S_SUCCESS)
+		return rv;
+
+	/* Read a message from the server */
+	rv = MessageReceive(&get_reader_events, sizeof(get_reader_events), dwClientID);
+	if (rv != SCARD_S_SUCCESS)
+		return rv;
+
+	*readerEvents = get_reader_events.readerEvents;
 
 	return SCARD_S_SUCCESS;
 }

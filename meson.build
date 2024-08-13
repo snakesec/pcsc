@@ -10,20 +10,23 @@
 # meson setup --reconfigure --wipe
 
 project('pcsc-lite', 'c',
-  version : '2.2.0')
+  meson_version : '>=0.58.0',
+  version : '2.3.0')
 
 # for config.h
 conf_data = configuration_data({
   'VERSION' : '"' + meson.project_version() + '"',
   'PCSCLITE_HP_DROPDIR' : '"' + get_option('usbdropdir') + '"',
   'HAVE_NANOSLEEP' : true,
+  'NO_LOG' : get_option('embedded'),
   })
 # for generated files from .in templates
+sbindir = join_paths(get_option('prefix') , get_option('sbindir'))
 confgen_data = configuration_data({
   'VERSION' : meson.project_version(),
   'ipcdir' : get_option('ipcdir'),
   'sysconfdir' : get_option('sysconfdir'),
-  'sbindir_exp' : '/' / get_option('sbindir'),
+  'sbindir_exp' : sbindir,
   'PCSCLITE_CONFIG_DIR' : get_option('serialconfdir'),
   'usbdropdir' : get_option('usbdropdir'),
   })
@@ -52,6 +55,11 @@ if get_option('serial')
   features += 'serial'
 endif
 
+if get_option('filter_names')
+  conf_data.set('FILTER_NAMES', true)
+  features += 'filter_names'
+endif
+
 # flex generator
 gen_flex = generator(find_program('flex'),
   output : '@BASENAME@.c',
@@ -62,8 +70,8 @@ add_global_arguments('-fvisibility=hidden', language : 'c')
 
 # pcscd daemon
 pcscd_src = [
-  'src/auth.c',
   'src/atrhandler.c',
+  'src/auth.c',
   'src/debuglog.c',
   'src/dyn_unix.c',
   'src/eventhandler.c',
@@ -71,7 +79,6 @@ pcscd_src = [
   'src/hotplug_libudev.c',
   'src/hotplug_libusb.c',
   'src/ifdwrapper.c',
-  'src/ifdwrapper.h',
   'src/pcscdaemon.c',
   'src/prothandler.c',
   'src/readerfactory.c',
@@ -98,11 +105,17 @@ if get_option('libudev')
 endif
 
 if get_option('libusb')
+  if get_option('libudev')
+    error('You can\'t use both libudev and libusb')
+  endif
   libusb_dep = dependency('libusb-1.0')
   pcscd_dep += libusb_dep
   conf_data.set('HAVE_LIBUSB', true)
   features += 'libusb'
 endif
+
+cc = meson.get_compiler('c')
+dl_deps = cc.find_library('dl', required: false)
 
 polkit_dep = dependency('polkit-gobject-1', required : get_option('polkit'))
 if polkit_dep.found()
@@ -112,22 +125,23 @@ endif
 
 systemd_dep = dependency('libsystemd', required : get_option('libsystemd'))
 if systemd_dep.found()
+  conf_data.set('USE_LIBSYSTEMD', true)
   features += 'systemd'
 endif
 
-target_system = target_machine.system()
-if target_system == 'darwin'
+# architecture
+r = run_command('uname', check: true)
+pcsc_arch = r.stdout().strip()
+if pcsc_arch == 'Darwin'
+  pcsc_arch = 'MacOS'
   pcscd_dep += dependency('appleframeworks', modules : ['foundation', 'IOKit'])
   pcscd_src += files(['src/hotplug_macosx.c', 'src/dyn_macosx.c'])
-  conf_data.set_quoted('PCSC_ARCH', 'MacOS')
-elif target_system == 'linux'
-  conf_data.set_quoted('PCSC_ARCH', 'Linux')
-elif target_system == 'netbsd'
-  conf_data.set_quoted('PCSC_ARCH', 'NetBSD')
 endif
-pcscd_dep += [polkit_dep, systemd_dep]
+conf_data.set_quoted('PCSC_ARCH', pcsc_arch)
 
-features +=  conf_data.get_unquoted('PCSC_ARCH')
+pcscd_dep += [polkit_dep, systemd_dep, dl_deps]
+
+features +=  pcsc_arch
 features += target_machine.cpu()
 features += 'ipcdir=' + get_option('ipcdir')
 features += 'usbdropdir=' + get_option('usbdropdir')
@@ -142,7 +156,7 @@ executable('pcscd',
   dependencies : pcscd_dep,
   c_args: '-DPCSCD',
   export_dynamic : true,
-  install_dir : '/' / get_option('sbindir'),
+  install_dir : sbindir,
   install : true)
 
 # libpcsclite_real library
@@ -170,6 +184,7 @@ libpcsclite_src = [
   ]
 libpcsclite = library('pcsclite',
   libpcsclite_src,
+  dependencies : dl_deps,
   include_directories : incdir,
   soversion : 1,
   install : true)
@@ -182,6 +197,7 @@ library('pcsclite_fake',
 # libpcscspy library
 library('pcscspy',
   sources : ['src/spy/libpcscspy.c', 'src/sys_unix.c'],
+  dependencies : dl_deps,
   include_directories : incdir,
   soversion : 0,
   install : true)
@@ -204,6 +220,11 @@ executable('testpcsc',
   include_directories : incdir,
   link_with : libpcsclite)
 
+executable('pcsc_demo',
+  sources : 'doc/example/pcsc_demo.c',
+  include_directories : incdir,
+  link_with : libpcsclite)
+
 # PC/SC headers
 install_headers(
   ['src/PCSC/debuglog.h',
@@ -211,7 +232,7 @@ install_headers(
    'src/PCSC/reader.h',
    'src/PCSC/winscard.h',
    'src/PCSC/wintypes.h'],
-  install_dir : 'include/PCSC')
+  install_dir : get_option('includedir') / 'PCSC')
 
 # data
 if get_option('polkit')
@@ -219,6 +240,9 @@ install_data('doc/org.debian.pcsc-lite.policy',
   install_dir : polkit_dep.get_variable('policydir'))
 endif
 
+install_data('etc/fr.apdu.pcsclite.metainfo.xml',
+  install_dir : 'share/metainfo'
+  )
 # generate config.h
 configure_file(output : 'config.h',
   configuration : conf_data)
@@ -226,7 +250,7 @@ configure_file(output : 'config.h',
 # generate from .in files
 configure_file(output : 'pcsclite.h',
   input : 'src/PCSC/pcsclite.h.in',
-  install_dir : join_paths(get_option('prefix'), 'include/PCSC'),
+  install_dir : get_option('prefix') / get_option('includedir') / 'PCSC',
   configuration : confgen_data)
 configure_file(output : 'pcscd.h',
   input : 'src/pcscd.h.in',
@@ -268,3 +292,15 @@ pkg.generate(
     'usbdropdir=' + conf_data.get_unquoted('PCSCLITE_HP_DROPDIR'),
     'serialconfdir=' + get_option('serialconfdir')],
   description : 'PC/SC smart card interface')
+
+# generate documentation
+configure_file(output : 'doxygen.conf',
+  input : 'doc/doxygen.conf.in',
+  configuration : confgen_data)
+doxygen = find_program('doxygen', required : false)
+if doxygen.found()
+  message('Doxygen found')
+  run_target('doc', command : [doxygen, 'doxygen.conf'])
+else
+  warning('Documentation disabled without doxygen')
+endif

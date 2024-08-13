@@ -1,3 +1,39 @@
+2.3.0: Ludovic Rousseau
+3 August 2024
+- SCardGetStatusChange(): add the number of reader events
+- Add Appstream metainfo announcing HW support
+- meson: specify minimum meson version to use
+- fix formats under musl libc
+- Send libpcsclite.so logs to stderr instead of stdout
+- Some other minor improvements
+
+2.2.3: Ludovic Rousseau
+26 May 2024
+- meson:
+  . Fix build on Slackware 15
+  . fail if both libusb and libudev are used
+- Fix memory leak on exit
+- libpcscspy: dump an output buffer only if the call succeeded
+- Some code cleanup
+
+2.2.2: Ludovic Rousseau
+20 May 2024
+- Serial support is ENABLED by default
+
+2.2.1: Ludovic Rousseau
+8 May 2024
+- fix meson related issues
+- Some code cleanup
+
+2.2.0: Ludovic Rousseau
+3 May 2024
+- provide files for meson build tool (replaces autoconf/auoomake)
+- fix a missing symbol in libpcscspy (bug introduced by the previous version)
+- fix shutdown issues with hotplug_libusb
+- update pcsc-spy manpage
+- update copyright date
+- Some other minor improvements
+
 2.1.0: Ludovic Rousseau
 12 April 2024
 - LIBPCSCLITE_DELEGATE is used to redirect to another libpcsclite library

@@ -49,9 +49,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
-#ifdef HAVE_ALLOCA_H
-#include <alloca.h>
-#endif
 #include <stdatomic.h>
 #include <stdbool.h>
 
@@ -76,8 +73,8 @@ static char *ConfigFile = NULL;
 static int ConfigFileCRC = 0;
 #endif
 static pthread_mutex_t LockMutex = PTHREAD_MUTEX_INITIALIZER;
+int16_t ReaderEvents = 1;
 
-#define IDENTITY_SHIFT 16
 static LONG removeReader(READER_CONTEXT * sReader);
 
 static int RDR_CLIHANDLES_seeker(const void *el, const void *key)
@@ -403,6 +400,12 @@ LONG RFAddReader(const char *readerNameLong, int port, const char *library,
 		}
 	}
 
+	/* we have one more reader */
+	ReaderEvents++;
+	/* wrap? */
+	if (ReaderEvents < 0)
+		ReaderEvents = 1;
+
 	/* Call on the driver to see if there are multiple slots */
 	dwGetSize = sizeof(ucGetData);
 	rv = IFDGetCapabilities((sReadersContexts[dwContext]),
@@ -625,6 +628,12 @@ LONG RFRemoveReader(const char *readerName, int port, int flags)
 			}
 		}
 	}
+
+	/* we have one less reader */
+	ReaderEvents++;
+	/* wrap? */
+	if (ReaderEvents < 0)
+		ReaderEvents = 1;
 
 	return SCARD_S_SUCCESS;
 }

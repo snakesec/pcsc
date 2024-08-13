@@ -129,7 +129,7 @@ INTERNAL int SYS_RandomInt(void)
 	// the casts are for the sake of clarity
 	return (int)(ui & (unsigned int)INT_MAX);
 #else
-	int r = lrand48(); // this is not thread-safe
+	int r = (int)lrand48(); // this is not thread-safe
 	return r;
 #endif /* HAVE_GETRANDOM */
 }
@@ -172,10 +172,8 @@ INTERNAL const char * SYS_GetEnv(const char *name)
 #else
 	/* Otherwise, make sure current process is not tainted by uid or gid
 	 * changes */
-#ifdef HAVE_issetugid
 	if (issetugid())
 		return NULL;
-#endif
 	return getenv(name);
 #endif
 }

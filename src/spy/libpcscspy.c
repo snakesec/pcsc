@@ -102,8 +102,8 @@ static void log_line(const char *fmt, ...)
 	va_list args;
 
 	va_start(args, fmt);
-	vprintf(fmt, args);
-	printf("\n");
+	vfprintf(stderr, fmt, args);
+	fprintf(stderr, "\n");
 	va_end(args);
 }
 #else
@@ -121,7 +121,7 @@ static void spy_line_direct(char *line)
 	if (Log_fd < 0)
 		return;
 
-	snprintf(threadid, sizeof threadid, "%lX@", pthread_self());
+	snprintf(threadid, sizeof threadid, "%lX@", (unsigned long)pthread_self());
 	pthread_mutex_lock(&Log_fd_mutex);
 	r = write(Log_fd, threadid, strlen(threadid));
 	r = write(Log_fd, line, strlen(line));
@@ -150,7 +150,7 @@ static void spy_line(const char *fmt, ...)
 		printf("libpcsc-spy: Buffer is too small!\n");
 		return;
 	}
-	snprintf(threadid, sizeof threadid, "%lX@", pthread_self());
+	snprintf(threadid, sizeof threadid, "%lX@", (unsigned long)pthread_self());
 	pthread_mutex_lock(&Log_fd_mutex);
 	r = write(Log_fd, threadid, strlen(threadid));
 	r = write(Log_fd, line, size);
@@ -560,7 +560,12 @@ PCSC_API LONG SCardControl(SCARDHANDLE hCard,
 	rv = spy.SCardControl(hCard, dwControlCode, pbSendBuffer, cbSendLength,
 		pbRecvBuffer, cbRecvLength, lpBytesReturned);
 	if (lpBytesReturned)
-		spy_buffer(pbRecvBuffer, *lpBytesReturned);
+	{
+		if (SCARD_S_SUCCESS == rv)
+			spy_buffer(pbRecvBuffer, *lpBytesReturned);
+		else
+			spy_buffer(NULL, *lpBytesReturned);
+	}
 	else
 		spy_buffer(NULL, 0);
 	Quit();
@@ -603,7 +608,12 @@ PCSC_API LONG SCardTransmit(SCARDHANDLE hCard,
 		spy_long(-1);
 	}
 	if (pcbRecvLength)
-		spy_buffer(pbRecvBuffer, *pcbRecvLength);
+	{
+		if (SCARD_S_SUCCESS == rv)
+			spy_buffer(pbRecvBuffer, *pcbRecvLength);
+		else
+			spy_buffer(NULL, *pcbRecvLength);
+	}
 	else
 		spy_buffer(NULL, 0);
 	Quit();
@@ -697,16 +707,19 @@ PCSC_API LONG SCardGetAttrib(SCARDHANDLE hCard,
 	if (NULL == pcbAttrLen)
 		spy_buffer(NULL, 0);
 	else
-	{
-		LPBYTE buffer;
-
-		if (autoallocate)
-			buffer = *(LPBYTE *)pbAttr;
+		if (rv != SCARD_S_SUCCESS)
+			spy_buffer(NULL, *pcbAttrLen);
 		else
-			buffer = pbAttr;
+		{
+			LPBYTE buffer;
 
-		spy_buffer(buffer, *pcbAttrLen);
-	}
+			if (autoallocate)
+				buffer = *(LPBYTE *)pbAttr;
+			else
+				buffer = pbAttr;
+
+			spy_buffer(buffer, *pcbAttrLen);
+		}
 	Quit();
 	return rv;
 }

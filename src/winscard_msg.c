@@ -56,9 +56,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 #include <string.h>
 #include <stdlib.h>
-#ifdef HAVE_SYS_FILIO_H
-#include <sys/filio.h>
-#endif
 
 #include "misc.h"
 #include "pcscd.h"
@@ -241,7 +238,7 @@ INTERNAL LONG MessageReceiveTimeout(uint32_t command, void *buffer_void,
 		/* try to read only when socket is readable */
 		if (pollret > 0)
 		{
-			int bytes_read;
+			ssize_t bytes_read;
 
 			if (!(read_fd.revents & POLLIN))
 			{
@@ -381,7 +378,7 @@ INTERNAL LONG MessageSend(void *buffer_void, uint64_t buffer_size,
 		/* try to write only when the file descriptor is writable */
 		if (pollret > 0)
 		{
-			int written;
+			ssize_t written;
 
 			if (!(write_fd.revents & POLLOUT))
 			{
@@ -481,7 +478,7 @@ INTERNAL LONG MessageReceive(void *buffer_void, uint64_t buffer_size,
 		/* try to read only when socket is readable */
 		if (pollret > 0)
 		{
-			int bytes_read;
+			ssize_t bytes_read;
 
 			if (!(read_fd.revents & POLLIN))
 			{

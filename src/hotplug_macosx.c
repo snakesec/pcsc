@@ -160,12 +160,12 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 	}
 	bundleArray = CFBundleCreateBundlesFromDirectory(kCFAllocatorDefault,
 		pluginUrl, NULL);
+	CFRelease(pluginUrl);
 	if (!bundleArray)
 	{
 		Log1(PCSC_LOG_ERROR, "error getting plugin directory bundles");
 		return NULL;
 	}
-	CFRelease(pluginUrl);
 
 	size_t bundleArraySize = CFArrayGetCount(bundleArray);
 	size_t i;
@@ -183,6 +183,7 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 		if (!blobValue)
 		{
 			Log1(PCSC_LOG_ERROR, "error getting vendor ID from bundle");
+			CFRelease(bundleArray);
 			return NULL;
 		}
 
@@ -209,6 +210,7 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 	if (!bundleVector)
 	{
 		Log1(PCSC_LOG_ERROR, "memory allocation failure");
+		CFRelease(bundleArray);
 		return NULL;
 	}
 
@@ -221,9 +223,11 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 
 		CFURLRef bundleUrl = CFBundleCopyBundleURL(currBundle);
 		CFStringRef bundlePath = CFURLCopyPath(bundleUrl);
+		CFRelease(bundleUrl);
 
 		driverBundle->m_libPath = strdup(CFStringGetCStringPtr(bundlePath,
 				CFStringGetSystemEncoding()));
+		CFRelease(bundlePath);
 
 		const void * blobValue = CFDictionaryGetValue(dict,
 			CFSTR(PCSCLITE_HP_MANUKEY_NAME));
@@ -231,6 +235,7 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 		if (!blobValue)
 		{
 			Log1(PCSC_LOG_ERROR, "error getting vendor ID from bundle");
+			CFRelease(bundleArray);
 			return bundleVector;
 		}
 
@@ -250,6 +255,7 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 			if (!productArray)
 			{
 				Log1(PCSC_LOG_ERROR, "error getting product ID from bundle");
+				CFRelease(bundleArray);
 				return bundleVector;
 			}
 
@@ -259,24 +265,27 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 			if (!friendlyNameArray)
 			{
 				Log1(PCSC_LOG_ERROR, "error getting product ID from bundle");
+				CFRelease(bundleArray);
 				return bundleVector;
 			}
 
-			int reader_nb = CFArrayGetCount(vendorArray);
+			long reader_nb = CFArrayGetCount(vendorArray);
 
 			if (reader_nb != CFArrayGetCount(productArray))
 			{
 				Log3(PCSC_LOG_ERROR,
-					"Malformed Info.plist: %d vendors and %ld products",
+					"Malformed Info.plist: %ld vendors and %ld products",
 					reader_nb, CFArrayGetCount(productArray));
+				CFRelease(bundleArray);
 				return bundleVector;
 			}
 
 			if (reader_nb != CFArrayGetCount(friendlyNameArray))
 			{
 				Log3(PCSC_LOG_ERROR,
-					"Malformed Info.plist: %d vendors and %ld friendlynames",
+					"Malformed Info.plist: %ld vendors and %ld friendlynames",
 					reader_nb, CFArrayGetCount(friendlyNameArray));
+				CFRelease(bundleArray);
 				return bundleVector;
 			}
 
@@ -288,12 +297,12 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 
 				CFStringGetCString(strValue, stringBuffer, sizeof stringBuffer,
 					kCFStringEncodingUTF8);
-				driverBundle->m_vendorId = strtoul(stringBuffer, NULL, 16);
+				driverBundle->m_vendorId = (unsigned int)strtoul(stringBuffer, NULL, 16);
 
 				strValue = CFArrayGetValueAtIndex(productArray, j);
 				CFStringGetCString(strValue, stringBuffer, sizeof stringBuffer,
 					kCFStringEncodingUTF8);
-				driverBundle->m_productId = strtoul(stringBuffer, NULL, 16);
+				driverBundle->m_productId = (unsigned int)strtoul(stringBuffer, NULL, 16);
 
 				strValue = CFArrayGetValueAtIndex(friendlyNameArray, j);
 				CFStringGetCString(strValue, stringBuffer, sizeof stringBuffer,
@@ -419,7 +428,7 @@ HPDriversMatchUSBDevices(HPDriverVector driverBundle,
 	}
 
 	io_iterator_t usbIter;
-	kern_return_t kret = IOServiceGetMatchingServices(kIOMasterPortDefault,
+	kern_return_t kret = IOServiceGetMatchingServices(kIOMainPortDefault,
 		usbMatch, &usbIter);
 
 	if (kret != 0)
@@ -522,7 +531,7 @@ HPDriversMatchPCCardDevices(HPDriver * driverBundle,
 
 	io_iterator_t pccIter;
 	kern_return_t kret =
-		IOServiceGetMatchingServices(kIOMasterPortDefault, pccMatch,
+		IOServiceGetMatchingServices(kIOMainPortDefault, pccMatch,
 		&pccIter);
 	if (kret != 0)
 	{
@@ -559,6 +568,7 @@ HPDriversMatchPCCardDevices(HPDriver * driverBundle,
 		{
 			CFNumberGetValue((CFNumberRef) valueRef, kCFNumberSInt32Type,
 				&vendorId);
+			CFRelease(valueRef);
 		}
 		valueRef =
 			IORegistryEntryCreateCFProperty(pccDevice, CFSTR("DeviceID"),
@@ -571,6 +581,7 @@ HPDriversMatchPCCardDevices(HPDriver * driverBundle,
 		{
 			CFNumberGetValue((CFNumberRef) valueRef, kCFNumberSInt32Type,
 				&productId);
+			CFRelease(valueRef);
 		}
 		valueRef =
 			IORegistryEntryCreateCFProperty(pccDevice, CFSTR("SocketNumber"),
@@ -583,6 +594,7 @@ HPDriversMatchPCCardDevices(HPDriver * driverBundle,
 		{
 			CFNumberGetValue((CFNumberRef) valueRef, kCFNumberSInt32Type,
 				&pccAddress);
+			CFRelease(valueRef);
 		}
 		HPDriver *driver = driverBundle;
 
@@ -609,7 +621,7 @@ static void HPEstablishUSBNotification(void)
 	IONotificationPortRef notificationPort;
 	IOReturn kret;
 
-	notificationPort = IONotificationPortCreate(kIOMasterPortDefault);
+	notificationPort = IONotificationPortCreate(kIOMainPortDefault);
 	CFRunLoopAddSource(CFRunLoopGetCurrent(),
 		IONotificationPortGetRunLoopSource(notificationPort),
 		kCFRunLoopDefaultMode);
@@ -618,6 +630,7 @@ static void HPEstablishUSBNotification(void)
 	if (!matchingDictionary)
 	{
 		Log1(PCSC_LOG_ERROR, "IOServiceMatching() failed");
+		return;
 	}
 	matchingDictionary =
 		(CFMutableDictionaryRef) CFRetain(matchingDictionary);
@@ -652,7 +665,7 @@ static void HPEstablishPCCardNotification(void)
 	IONotificationPortRef notificationPort;
 	IOReturn kret;
 
-	notificationPort = IONotificationPortCreate(kIOMasterPortDefault);
+	notificationPort = IONotificationPortCreate(kIOMainPortDefault);
 	CFRunLoopAddSource(CFRunLoopGetCurrent(),
 		IONotificationPortGetRunLoopSource(notificationPort),
 		kCFRunLoopDefaultMode);
@@ -661,6 +674,7 @@ static void HPEstablishPCCardNotification(void)
 	if (!matchingDictionary)
 	{
 		Log1(PCSC_LOG_ERROR, "IOServiceMatching() failed");
+		return;
 	}
 	matchingDictionary =
 		(CFMutableDictionaryRef) CFRetain(matchingDictionary);
@@ -717,10 +731,20 @@ static int HPScan(void)
 	HPDeviceList devices = NULL;
 
 	if (HPDriversMatchUSBDevices(Drivers, &devices))
+	{
+		if (devices)
+			free(devices);
+
 		return -1;
+	}
 
 	if (HPDriversMatchPCCardDevices(Drivers, &devices))
+	{
+		if (devices)
+			free(devices);
+
 		return -1;
+	}
 
 	HPDevice *a;
 
@@ -787,6 +811,8 @@ pthread_t sHotplugWatcherThread;
  */
 ULONG HPRegisterForHotplugEvents(const char * hpDirPath)
 {
+	(void)hpDirPath;
+
 	ThreadCreate(&sHotplugWatcherThread,
 		THREAD_ATTR_DEFAULT,
 		(PCSCLITE_THREAD_FUNCTION( )) HPDeviceNotificationThread, NULL);
