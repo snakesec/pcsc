@@ -1,3 +1,27 @@
+2.3.3: Ludovic Rousseau
+2 April 2025
+- Make polkit rules work again (bug introduced in 2.3.2)
+
+2.3.2: Ludovic Rousseau
+26 March 2025
+- Hardening systemd pcscd.service file
+- pcscd.service: add missing Requires=polkit.service
+- pcsc-spy: add missing PCSCv2_PART10_PROPERTY_* definitions
+- Support udev PCSCLITE_IGNORE property to filter readers
+- debuglog: force use of colors when --color is used
+- Some other minor improvements
+
+2.3.1: Ludovic Rousseau
+24 December 2024
+- Install a default /etc/default/pcscd file
+- auth.c: implement polkit support for FreeBSD
+- meson:
+  . also build static version of libpcsclite
+  . add options to disable polkit and libsystemd
+  . add "filter_names" in features when needed
+- Doxygen: document dwCurrentState use for "\\?PnP?\Notification"
+- Some other minor improvements
+
 2.3.0: Ludovic Rousseau
 3 August 2024
 - SCardGetStatusChange(): add the number of reader events

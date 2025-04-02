@@ -1,6 +1,4 @@
-autoreconf -i .
-
-./configure --disable-libsystemd --disable-libudev --disable-polkit
+meson setup builddir -Dlibsystemd=false -Dlibudev=false -Dpolkit=false
 
 if [ $? -eq 0 ]
 then
@@ -11,23 +9,26 @@ else
   exit 1
 fi
 
-make
+
+cd builddir
+
+meson compile
 
 if [ $? -eq 0 ]
 then
   # Result is OK! Just continue...
-  echo "Make... PASS!"
+  echo "Meson compile... PASS!"
 else
   # houston we have a problem
   exit 1
 fi
 
-make install
+meson install
 
 if [ $? -eq 0 ]
 then
   # Result is OK! Just continue...
-  echo "Make install... PASS!"
+  echo "Meson install... PASS!"
 else
   # houston we have a problem
   exit 1

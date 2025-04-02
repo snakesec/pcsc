@@ -47,6 +47,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/time.h>
 #include <time.h>
 #include <pthread.h>
+#include <stdbool.h>
 
 #include "pcsclite.h"
 #include "misc.h"
@@ -106,7 +107,7 @@ static char LogCategory = DEBUG_CATEGORY_NOTHING;
 /** default level */
 static char LogLevel = PCSC_LOG_ERROR;
 
-static signed char LogDoColor = 0;	/**< no color by default */
+static bool LogDoColor = false;	/**< no color by default */
 
 static pthread_mutex_t LastTimeMutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -339,8 +340,11 @@ void DebugLogSetLogType(const int dbgtype)
 		case DEBUGLOG_NO_DEBUG:
 		case DEBUGLOG_SYSLOG_DEBUG:
 		case DEBUGLOG_STDOUT_DEBUG:
+			LogMsgType = dbgtype;
+			break;
 		case DEBUGLOG_STDOUT_COLOR_DEBUG:
 			LogMsgType = dbgtype;
+			LogDoColor = true;
 			break;
 		default:
 			Log2(PCSC_LOG_CRITICAL, "unknown log type (%d), using stdout",
@@ -349,8 +353,7 @@ void DebugLogSetLogType(const int dbgtype)
 	}
 
 	/* log to stdout and stdout is a tty? */
-	if ((DEBUGLOG_STDOUT_DEBUG == LogMsgType && isatty(fileno(stdout)))
-		|| (DEBUGLOG_STDOUT_COLOR_DEBUG == LogMsgType))
+	if (DEBUGLOG_STDOUT_DEBUG == LogMsgType && isatty(fileno(stdout)))
 	{
 		const char *term;
 
@@ -366,7 +369,7 @@ void DebugLogSetLogType(const int dbgtype)
 				/* we found a supported term? */
 				if (0 == strcmp(terms[i], term))
 				{
-					LogDoColor = 1;
+					LogDoColor = true;
 					break;
 				}
 			}

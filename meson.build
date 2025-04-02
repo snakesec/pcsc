@@ -11,7 +11,7 @@
 
 project('pcsc-lite', 'c',
   meson_version : '>=0.58.0',
-  version : '2.3.0')
+  version : '2.3.3')
 
 # for config.h
 conf_data = configuration_data({
@@ -117,14 +117,19 @@ endif
 cc = meson.get_compiler('c')
 dl_deps = cc.find_library('dl', required: false)
 
-polkit_dep = dependency('polkit-gobject-1', required : get_option('polkit'))
-if polkit_dep.found()
+pcscd_dep += dl_deps
+
+if get_option('polkit')
+  polkit_dep = dependency('polkit-gobject-1')
+  pcscd_dep += polkit_dep
   conf_data.set('HAVE_POLKIT', true)
+  confgen_data.set('requires_polkit', 'Requires=polkit.service')
   features += 'polkit'
 endif
 
-systemd_dep = dependency('libsystemd', required : get_option('libsystemd'))
-if systemd_dep.found()
+if get_option('libsystemd')
+  systemd_dep = dependency('libsystemd')
+  pcscd_dep += systemd_dep
   conf_data.set('USE_LIBSYSTEMD', true)
   features += 'systemd'
 endif
@@ -138,8 +143,6 @@ if pcsc_arch == 'Darwin'
   pcscd_src += files(['src/hotplug_macosx.c', 'src/dyn_macosx.c'])
 endif
 conf_data.set_quoted('PCSC_ARCH', pcsc_arch)
-
-pcscd_dep += [polkit_dep, systemd_dep, dl_deps]
 
 features +=  pcsc_arch
 features += target_machine.cpu()
@@ -168,7 +171,7 @@ libpcsclite_real_src = [
   'src/utils.c',
   'src/winscard_msg.c'
   ]
-library('pcsclite_real',
+shared_library('pcsclite_real',
   libpcsclite_real_src,
   include_directories : incdir,
   dependencies : threads_dep,
@@ -179,14 +182,27 @@ library('pcsclite_real',
 # libpcsclite library
 libpcsclite_src = [
   'src/error.c',
+  'src/g_defines.c',
   'src/libredirect.c',
   'src/sys_unix.c'
   ]
-libpcsclite = library('pcsclite',
+libpcsclite = shared_library('pcsclite',
   libpcsclite_src,
   dependencies : dl_deps,
   include_directories : incdir,
   soversion : 1,
+  install : true)
+
+# static library
+libpcsclite_static_src = libpcsclite_real_src + [
+  'src/error.c',
+  'src/g_defines.c',
+  ]
+libpcsclite_static = static_library('pcsclite',
+  libpcsclite_static_src,
+  include_directories : incdir,
+  dependencies : threads_dep,
+  c_args: '-DLIBPCSCLITE -DSIMCLIST_NO_DUMPRESTORE',
   install : true)
 
 # libpcsclite_fake library
@@ -225,6 +241,11 @@ executable('pcsc_demo',
   include_directories : incdir,
   link_with : libpcsclite)
 
+executable('pcsc_demo_static',
+  sources : 'doc/example/pcsc_demo.c',
+  include_directories : incdir,
+  link_with : libpcsclite_static)
+
 # PC/SC headers
 install_headers(
   ['src/PCSC/debuglog.h',
@@ -243,6 +264,11 @@ endif
 install_data('etc/fr.apdu.pcsclite.metainfo.xml',
   install_dir : 'share/metainfo'
   )
+
+install_data('etc/pcscd',
+  install_dir : get_option('sysconfdir') / 'default'
+  )
+
 # generate config.h
 configure_file(output : 'config.h',
   configuration : conf_data)

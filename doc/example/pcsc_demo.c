@@ -54,7 +54,7 @@ else \
 int main(int argc, char *argv[])
 {
 	LONG rv;
-	SCARDCONTEXT hContext;
+	SCARDCONTEXT hContext = 0;
 	DWORD dwReaders;
 	LPSTR mszReaders = NULL;
 	char *ptr, **readers = NULL;
@@ -234,7 +234,7 @@ int main(int argc, char *argv[])
 	/* get card status change */
 	{
 		/* check only one reader */
-		SCARD_READERSTATE rgReaderStates[1];
+		SCARD_READERSTATE rgReaderStates[1] = { 0 };
 
 		rgReaderStates[0].szReader = pbReader;
 		rgReaderStates[0].dwCurrentState = SCARD_STATE_UNAWARE;

@@ -125,7 +125,7 @@ static void log_line(const char *fmt, ...)
 }
 #endif
 
-static LONG load_lib(void)
+static void load_lib(void)
 {
 #define LIBPCSC "libpcsclite_real.so.1"
 
@@ -140,15 +140,15 @@ static LONG load_lib(void)
 	if (NULL == Lib_handle)
 	{
 		log_line("loading \"%s\" failed: %s", lib, dlerror());
-		return SCARD_F_INTERNAL_ERROR;
+		return;
 	}
 
-#define get_symbol(s) do { redirect.s = dlsym(Lib_handle, #s); if (NULL == redirect.s) { log_line("%s", dlerror()); return SCARD_F_INTERNAL_ERROR; } } while (0)
+#define get_symbol(s) do { redirect.s = dlsym(Lib_handle, #s); if (NULL == redirect.s) { log_line("%s", dlerror()); return; } } while (0)
 
 	if (SCardEstablishContext == dlsym(Lib_handle, "SCardEstablishContext"))
 	{
 		log_line("Symbols dlsym error");
-		return SCARD_F_INTERNAL_ERROR;
+		return;
 	}
 
 	get_symbol(SCardEstablishContext);
@@ -169,10 +169,7 @@ static LONG load_lib(void)
 	get_symbol(SCardCancel);
 	get_symbol(SCardGetAttrib);
 	get_symbol(SCardSetAttrib);
-
-	return SCARD_S_SUCCESS;
 }
-
 
 /* exported functions */
 PCSC_API LONG SCardEstablishContext(DWORD dwScope,
@@ -180,18 +177,9 @@ PCSC_API LONG SCardEstablishContext(DWORD dwScope,
 	LPCVOID pvReserved2,
 	LPSCARDCONTEXT phContext)
 {
-	LONG rv;
-	static int init = 0;
+	static pthread_once_t once_control = PTHREAD_ONCE_INIT;
 
-	if (!init)
-	{
-		init = 1;
-
-		/* load the real library */
-		rv = load_lib();
-		if (rv != SCARD_S_SUCCESS)
-			return rv;
-	}
+	pthread_once(&once_control, load_lib);
 
 	return redirect.SCardEstablishContext(dwScope, pvReserved1, pvReserved2,
 		phContext);
@@ -331,11 +319,4 @@ PCSC_API LONG SCardSetAttrib(SCARDHANDLE hCard,
 {
 	return redirect.SCardSetAttrib(hCard, dwAttrId, pbAttr, cbAttrLen);
 }
-
-/** Protocol Control Information for T=0 */
-PCSC_API const SCARD_IO_REQUEST g_rgSCardT0Pci = { SCARD_PROTOCOL_T0, sizeof(SCARD_IO_REQUEST) };
-/** Protocol Control Information for T=1 */
-PCSC_API const SCARD_IO_REQUEST g_rgSCardT1Pci = { SCARD_PROTOCOL_T1, sizeof(SCARD_IO_REQUEST) };
-/** Protocol Control Information for raw access */
-PCSC_API const SCARD_IO_REQUEST g_rgSCardRawPci = { SCARD_PROTOCOL_RAW, sizeof(SCARD_IO_REQUEST) };
 
